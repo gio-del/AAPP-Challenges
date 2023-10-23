@@ -76,53 +76,38 @@ int main(int argc, char* argv[]) {
 }
 
 void initialize_table_minimum_length(int **table, int n, int m, char *x, char *y) {
-    // What is the idea of the minimum length?? At each cell of the matrix we have ALSO the number of gaps inserted to arrive at that cell.
 
     int max_gaps = max(n, m) - min(n, m);
-
-    // The idea is that we can have at most max_gaps gaps in the shortest sequence, so we can have at most max_gaps gaps in the alignment.
-    // In this case we look for minimization of cumulated gaps instead of minimization of cumulated cost.
-    // Only if we have the same cum_gaps coming from two different cells, we look at the cost to decide which one to choose.
-
-    // Implementation:
-    // Remember cum_gaps are in cum_gaps matrix, while costs are in table matrix.
     int **cum_gaps = allocate_table(n+1, m+1);
 
     table[0][0] = 0;
     cum_gaps[0][0] = 0;
 
-    for(int i=1; i<=max_gaps; i++) { // First row: we can only have gaps, specifically max_gaps gaps
+    for(int i=1; i<=max_gaps; i++) {
         table[i][0] = table[i-1][0] + GAP_COST;
         cum_gaps[i][0] = cum_gaps[i-1][0] + 1;
     }
 
-    for(int i=max_gaps+1; i<=n; i++) { // First row: the rest is unreachable
+    for(int i=max_gaps+1; i<=n; i++) {
         table[i][0] = UNREACHABLE;
-        // cum_gaps here is not important, we will never use it
     }
 
-    for(int j=1; j<=max_gaps; j++) { // First column: we can only have gaps, specifically max_gaps gaps
+    for(int j=1; j<=max_gaps; j++) {
         table[0][j] = table[0][j-1] + GAP_COST;
         cum_gaps[0][j] = cum_gaps[0][j-1] + 1;
     }
 
-    for(int j=max_gaps+1; j<=m; j++) { // First column: the rest is unreachable
+    for(int j=max_gaps+1; j<=m; j++) {
         table[0][j] = UNREACHABLE;
-        // cum_gaps here is not important, we will never use it
+        // cum_gaps here is not important
     }
 
     for(int i=1; i<=n; i++) {
         for(int j=1; j<=m; j++) {
-            // Check cum_gaps:
-                // Find the minimum cum_gaps. If we don't come from the diagonal, we have to add 1 to the minimum cum_gaps because we are adding a gap.
-                // If we come from the diagonal, we don't have to add anything.
-                // If the new possible cum_gaps is equal to the minimum cum_gaps, we have to check the cost to decide which one to choose.
             table[i][j] = UNREACHABLE;
             if(table[i-1][j-1] != UNREACHABLE) {
                 int min_cum_gaps = cum_gaps[i-1][j-1];
-                table[i][j] = table[i-1][j-1] + match_or_mismatch(j-1, i-1, x, y); // Assume we come from the diagonal
-
-                // now check if there is a smaller cum_gaps from the other two cells (in this case we have to add 1 to the minimum cum_gaps)
+                table[i][j] = table[i-1][j-1] + match_or_mismatch(j-1, i-1, x, y);
 
                 if(table[i-1][j] != UNREACHABLE) {
                         if(cum_gaps[i-1][j] + 1 < min_cum_gaps && cum_gaps[i-1][j] + 1 <= max_gaps) {
@@ -148,14 +133,10 @@ void initialize_table_minimum_length(int **table, int n, int m, char *x, char *y
             }
         }
     }
-    // Print cum_gaps for debugging
-    printf("The cum_gaps table is:\n");
-    print_table(cum_gaps, n, m, x, y);
+
+    // printf("The cum_gaps table is:\n"); // DEBUGGING PRINT
+    // print_table(cum_gaps, n, m, x, y);
 }
-
-
-
-
 
 int **allocate_table(int n, int m) {
     int **table = malloc(sizeof(int *) * n);
@@ -249,7 +230,7 @@ void solve(int **table, int n, int m, char *x, char *y, char *x_align, char *y_a
 
     printf("Number of mismatches: %d\n", num_mismatches);
     printf("Number of gaps: %d\n", num_gaps);
-    printf("Total cost: %d\n", table[n][m]); // Or num_mismatches * MISMATCH_COST + num_gaps * GAP_COST
+    printf("Total cost: %d\n", table[n][m]);
 }
 
 void print_table(int **table, int n, int m, char *x, char *y) {
