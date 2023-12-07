@@ -1,0 +1,6 @@
+build/
+*.csv
+*.btr
+mpi_1/
+mpi_2/
+.vscode/
