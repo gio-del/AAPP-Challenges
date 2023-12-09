@@ -83,29 +83,25 @@ struct dictionary {
   }
 };
 
-// Function handle to be used in MPI_Reduce to create a custom MPI_Op
-void reduce_dict(void *in, void *inout, int *len, [[maybe_unused]] MPI_Datatype *dptr) {
-  dictionary *dict_in = static_cast<dictionary *>(in);
-  dictionary *dict_inout = static_cast<dictionary *>(inout);
+// TODO: Function handle to be used in MPI_Reduce to create a custom MPI_Op
+void reduce_word(word *in, word *inout, int *len, MPI_Datatype *type) {
+    fprintf(stderr, "REDUCE WORD\n");
+    int max_len = *len; // Maximum length of the arrays
 
-  dictionary result;
-  // Given two dictionaries, it will sum the coverage of the same ngrams and take the ngrams with the greatest coverage
-  for(word data_in: dict_in->data) {
-    for(word data_inout: dict_inout->data) {
-      if(strcmp(data_in.ngram, data_inout.ngram) == 0) {
-        // The ngram is in the inout dictionary, sum the coverage
-        data_inout.coverage += data_in.coverage;
-        result.add_word(data_inout);
-        break;
-      }
-      else {
-        // The ngram is not in the inout dictionary, add it
-        result.add_word(data_in);
-        result.add_word(data_inout);
-        break;
-      }
+    for (int i = 0; i < max_len; ++i) {
+        bool found = false;
+        for (int j = 0; j < max_len; ++j) {
+            if (strcmp(in[i].ngram, inout[j].ngram) == 0) {
+                inout[j].coverage += in[i].coverage;
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            inout[*len] = in[i];
+            (*len)++;
+        }
     }
-  }
 }
 
 size_t count_coverage(const std::string &dataset, const char *ngram) {
@@ -125,9 +121,9 @@ size_t count_coverage(const std::string &dataset, const char *ngram) {
 int main([[maybe_unused]] int argc, [[maybe_unused]] char *argv[]) {
   // initialize MPI
   int provided_thread_level;
-  int rc_init = MPI_Init_thread(&argc, &argv, MPI_THREAD_MULTIPLE, &provided_thread_level);
+  int rc_init = MPI_Init_thread(&argc, &argv, MPI_THREAD_SINGLE, &provided_thread_level);
   exit_on_fail(rc_init);
-  if(provided_thread_level != MPI_THREAD_MULTIPLE) {
+  if(provided_thread_level < MPI_THREAD_SINGLE) {
     std::cerr << "The MPI implementation does not support multiple threads" << std::endl;
     return EXIT_FAILURE;
   }
@@ -136,8 +132,8 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char *argv[]) {
   mpi_context_type mpi_context = mpi_context_type();
 
   // create the custom MPI_Op
-  MPI_Op mpi_reduce_dict_op;
-  int rc_create_op = MPI_Op_create(reduce_dict, 1, &mpi_reduce_dict_op);
+  MPI_Op mpi_reduce_word_op;
+  int rc_create_op = MPI_Op_create((MPI_User_function *) reduce_word, 1, &mpi_reduce_word_op);
   exit_on_fail(rc_create_op);
 
   // create and commit the MPI_Datatype for the string
@@ -157,13 +153,6 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char *argv[]) {
   int rc_commit_word_type = MPI_Type_commit(&mpi_word_type);
   exit_on_fail(rc_commit_word_type);
 
-  // create the MPI_Datatype for the dictionary
-  MPI_Datatype mpi_dict_type;
-  int rc_create_dict_type = MPI_Type_contiguous(max_dictionary_size, mpi_word_type, &mpi_dict_type);
-  exit_on_fail(rc_create_dict_type);
-  int rc_commit_dict_type = MPI_Type_commit(&mpi_dict_type);
-  exit_on_fail(rc_commit_dict_type);
-
   // Idea: the master process (rank 0) reads the input and distributes uniformly the work
   // among the other processes. Each process will compute the coverage of a certain number of ngrams
   // at the end all processes will reduce the results to the master process that will compute the final dictionary
@@ -173,8 +162,9 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char *argv[]) {
   // This is the vector of lines that will be read from the standard input by the master process
   std::vector<std::string> lines;
 
-  // This is the final dictionary that will contain the reduced dictionaries hold by the master process
-  dictionary final_dict;
+  // This is the final words vector that will be used to store the reduced words, the master process will convert it to a dictionary and print it
+  word *final_words = new word[max_dictionary_size * mpi_context.size];
+  int final_words_len;
 
   // Total number of lines read from the standard input
   int num_lines;
@@ -246,9 +236,9 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char *argv[]) {
 
   // Now recvbuf is ready to be used and contains the lines to be processed
   std::unordered_set<char> alphabet_builder;
-  std::string database; // reserve 100MB
-  database.reserve(100000000);
-  // NOW USE RECVBUF
+  std::string database; // reserve 50MB
+  database.reserve(50000000);
+
   for(std::string line: recvbuf) {
     for(const auto character : line) {
       alphabet_builder.emplace(character);
@@ -296,13 +286,34 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char *argv[]) {
   exit_on_fail(rc_reduce_barrier);
   // Now each process has a dictionary with the ngrams with the greatest coverage, we need to reduce them to the master process
   // summing the coverage of the same ngrams and then the master process will compute the final dictionary
-  fprintf(stderr, "Process %d ready to reduce\n", mpi_context.rank);
-  // We can use MPI_Reduce to reduce the dictionaries but we need to define a custom MPI_Op to sum the coverage of the same ngrams and taking the ngrams with the greatest coverage
-  // Prototype: int MPI_Reduce(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype, MPI_Op op, int root, MPI_Comm comm)
-  int rc_reduce = MPI_Reduce(&result, &final_dict, 1, mpi_dict_type, mpi_reduce_dict_op, 0, mpi_context.comm);
+
+  // Remove the processors that have no words from the communicator
+  if(result.data.size() > 0) {
+    fprintf(stderr, "Process %d ready to reduce\n", mpi_context.rank);
+  } else {
+    fprintf(stderr, "Process %d has no words\n", mpi_context.rank);
+  }
+
+  // Reduce the number of words to the master process
+  int partial_size = result.data.size();
+  int rc_reduce = MPI_Reduce(&partial_size, &final_words_len, 1, MPI_INT, MPI_SUM, 0, mpi_context.comm);
+  exit_on_fail(rc_reduce);
+
+  // Reduce the dictionaries.word vector into the final_words vector using the custom MPI_Op
+  rc_reduce = MPI_Reduce(result.data.data(), final_words, result.data.size(), mpi_word_type, mpi_reduce_word_op, 0, mpi_context.comm);
   exit_on_fail(rc_reduce);
 
   if(mpi_context.rank == 0) {
+    dictionary final_dict;
+
+    for(int i = 0; i < final_words_len; ++i) {
+      fprintf(stderr, "Process %d adding word %s\n", mpi_context.rank, final_words[i].ngram);
+      if(strcmp(final_words[i].ngram, ")(") == 0) {
+        fprintf(stderr, "Process %d adding word %s\n with coverage %zu", mpi_context.rank, final_words[i].ngram, final_words[i].coverage);
+      }
+      final_dict.add_word(final_words[i]);
+    }
+
     fprintf(stderr, "Process %d writing final dictionary\n", mpi_context.rank);
     // generate the final dictionary
     // NOTE: we sort it for pretty-printing
@@ -317,7 +328,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char *argv[]) {
 
   fprintf(stderr, "Process %d finished\n", mpi_context.rank);
 
-  int rc_op_free = MPI_Op_free(&mpi_reduce_dict_op);
+  int rc_op_free = MPI_Op_free(&mpi_reduce_word_op);
   exit_on_fail(rc_op_free);
 
   int rc_comm_free = MPI_Comm_free(&mpi_context.comm);
@@ -328,9 +339,6 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char *argv[]) {
 
   int rc_word_type_free = MPI_Type_free(&mpi_word_type);
   exit_on_fail(rc_word_type_free);
-
-  int rc_dict_type_free = MPI_Type_free(&mpi_dict_type);
-  exit_on_fail(rc_dict_type_free);
 
   // finalize MPI
   int rc_finalize = MPI_Finalize();
