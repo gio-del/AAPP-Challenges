@@ -169,7 +169,6 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char *argv[]) {
   exit_on_fail(rc_bcast);
 
   fprintf(stderr, "Process %d received database\n", mpi_context.rank);
-  fprintf(stderr, "Process %d database: %s\n", mpi_context.rank, database.c_str());
 
   int rc_barrier = MPI_Barrier(mpi_context.comm);
   exit_on_fail(rc_barrier); // here all processes have the same lines vector
