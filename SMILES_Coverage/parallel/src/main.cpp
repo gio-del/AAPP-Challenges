@@ -130,8 +130,8 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char *argv[]) {
   int num_chars;
 
   // This is the buffer that contains the lines read from the standard input
-  std::string database; // reserve 50MB
-  database.reserve(50000000);
+  std::string database; // reserve 200MB
+  database.reserve(209715200);
 
   if(mpi_context.rank == 0) {
     // Read The input from the standard input
