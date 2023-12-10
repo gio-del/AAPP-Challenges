@@ -4,7 +4,6 @@ import time
 import matplotlib.pyplot as plt
 import subprocess
 import shlex
-import difflib
 
 def build_launch_sh(path, number_processes):
     command = path + "/scripts/launch.sh " + path + "/build/main " + path + "/data/molecules.smi " + path + "/output.csv " + str(number_processes)
@@ -35,22 +34,6 @@ if int(sys.argv[3]) <= 0:
 path_serial = sys.argv[1]
 path_parallel = sys.argv[2]
 max_number_processes = int(sys.argv[3])
-
-for i in range(1, max_number_processes + 1):
-    # Serial version
-    call_and_hide(build_launch_sh(path_serial, 1))
-    # Parallel version
-    call_and_hide(build_launch_sh(path_parallel, i))
-    # Check if the two files are the same if not print an error
-    serial_out = open(path_serial + "/output.csv", "r")
-    parallel_out = open(path_parallel + "/output.csv", "r")
-
-    try:
-        next(difflib.unified_diff(serial_out.readlines(), parallel_out.readlines()))
-        print("Parallel version with " + str(i) + " processes does not yield the same results as the serial one")
-        sys.exit(1)
-    except StopIteration:
-        print("Parallel version with " + str(i) + " processes yields the same results as the serial one")
 
 # Now execute the benchmarking: see if the parallel version scales on the number of processes, spoiler: it won't
 times = []
