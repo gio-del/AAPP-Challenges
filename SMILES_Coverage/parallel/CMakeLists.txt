@@ -68,7 +68,4 @@ target_compile_definitions(main PUBLIC "MPICH_SKIP_MPICXX") # MPICH
 target_link_libraries(main PUBLIC MPI::MPI_C)
 
 # link against OpenMP
-find_package(OpenMP)
-if(OpenMP_CXX_FOUND)
-    target_link_libraries(main PUBLIC OpenMP::OpenMP_CXX)
-endif()
+#target_link_libraries(main PUBLIC OpenMP::OpenMP_CXX)

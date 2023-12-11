@@ -1,5 +1,4 @@
 #include <mpi.h>
-#include <omp.h>
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
@@ -244,15 +243,15 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char *argv[]) {
     }
   }
 
-  fprintf(stderr, "Process %d computing from %zu to %zu words of ngram_size 1\n", mpi_context.rank,
+  fprintf(stderr, "Process %d computing from %zu(inc) to %zu(exc) words of ngram_size 1\n", mpi_context.rank,
           start_index[0], end_index[0]);
-  fprintf(stderr, "Process %d computing from %zu to %zu words of ngram_size 2\n", mpi_context.rank,
+  fprintf(stderr, "Process %d computing from %zu(inc) to %zu(exc) words of ngram_size 2\n", mpi_context.rank,
           start_index[1], end_index[1]);
-  fprintf(stderr, "Process %d computing from %zu to %zu words of ngram_size 3\n", mpi_context.rank,
+  fprintf(stderr, "Process %d computing from %zu(inc) to %zu(exc) words of ngram_size 3\n", mpi_context.rank,
           start_index[2], end_index[2]);
 
   // Now each process has the number of words to be processed, we can split the work
-  for (std::size_t ngram_size{1}; ngram_size <= max_pattern_len; ++ngram_size) {
+  for (std::size_t ngram_size = 1; ngram_size <= max_pattern_len; ++ngram_size) {
     for (std::size_t word_index = start_index[ngram_size - 1]; word_index < end_index[ngram_size - 1];
          ++word_index) {
       // compose the ngram
@@ -294,8 +293,6 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char *argv[]) {
 
   rc_barrier = MPI_Barrier(mpi_context.comm);
   exit_on_fail(rc_barrier);
-
-  fprintf(stderr, "Process %d size_max: %d, size_sum: %d\n", mpi_context.rank, size_max, size_sum);
 
   std::size_t partial_coverages[size_max];
 
