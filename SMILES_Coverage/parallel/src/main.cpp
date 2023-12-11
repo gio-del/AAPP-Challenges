@@ -1,10 +1,11 @@
+#include <mpi.h>
+#include <omp.h>
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
 #include <iostream>
 #include <unordered_set>
 #include <vector>
-#include <mpi.h>
 
 #include "mpi_error_check.hpp"
 
@@ -17,7 +18,8 @@ static_assert(max_pattern_len > 1, "The pattern must contain at least one charac
 static_assert(max_dictionary_size > 1, "The dictionary must contain at least one element");
 
 // global variables that hold the message tags
-const int tag_size = 0; // tag to send the num of lines, such that each process can allocate a recvbuf of the right size
+const int tag_size =
+    0;  // tag to send the num of lines, such that each process can allocate a recvbuf of the right size
 
 struct mpi_context_type {
   MPI_Comm comm;
@@ -58,7 +60,7 @@ struct dictionary {
 
   /**
    * add a new word to the dictionary, if the dictionary is full, it will replace the worst element
-  */
+   */
   void add_word(word &new_word) {
     const auto coverage = new_word.coverage;
     if (data.size() < max_dictionary_size) {
@@ -102,7 +104,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char *argv[]) {
   int provided_thread_level;
   int rc_init = MPI_Init_thread(&argc, &argv, MPI_THREAD_SINGLE, &provided_thread_level);
   exit_on_fail(rc_init);
-  if(provided_thread_level < MPI_THREAD_SINGLE) {
+  if (provided_thread_level < MPI_THREAD_SINGLE) {
     std::cerr << "The MPI implementation does not support multiple threads" << std::endl;
     return EXIT_FAILURE;
   }
@@ -117,12 +119,6 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char *argv[]) {
   rc_type = MPI_Type_commit(&mpi_string_type);
   exit_on_fail(rc_type);
 
-  // Idea: the master process (rank 0) reads the input and distributes uniformly the work
-  // among the other processes. Each process will compute the coverage of a certain number of ngrams
-  // at the end all processes will reduce the results to the master process that will compute the final dictionary
-  // that will be printed to the standard output
-  // DO NOT: print anything to anywhere unless already present in the code
-
   // This is the vector of lines that will be read from the standard input by the master process
   std::vector<std::string> lines;
 
@@ -130,23 +126,21 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char *argv[]) {
   int num_chars;
 
   // This is the buffer that contains the lines read from the standard input
-  std::string database; // reserve 200MB
+  std::string database;  // reserve 200MB
   database.reserve(209715200);
 
-  if(mpi_context.rank == 0) {
+  if (mpi_context.rank == 0) {
     // Read The input from the standard input
     std::cerr << "Reading the molecules from the standard input ..." << std::endl;
 
-    for(std::string line; std::getline(std::cin, line); /* automatically handled */) {
+    for (std::string line; std::getline(std::cin, line); /* automatically handled */) {
       lines.push_back(std::move(line));
     }
 
     fprintf(stderr, "Process %d read %ld lines\n", mpi_context.rank, lines.size());
 
-
-
-    for(std::string line: lines) {
-      for(const auto character : line) {
+    for (std::string line : lines) {
+      for (const auto character : line) {
         database.push_back(character);
       }
     }
@@ -154,7 +148,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char *argv[]) {
     num_chars = database.size();
 
     // Send it to the other processes
-    for(int i = 1; i < mpi_context.size; ++i) {
+    for (int i = 1; i < mpi_context.size; ++i) {
       int rc_send = MPI_Send(&num_chars, 1, MPI_INT, i, tag_size, mpi_context.comm);
       exit_on_fail(rc_send);
     }
@@ -171,7 +165,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char *argv[]) {
   fprintf(stderr, "Process %d received database\n", mpi_context.rank);
 
   int rc_barrier = MPI_Barrier(mpi_context.comm);
-  exit_on_fail(rc_barrier); // here all processes have the same lines vector
+  exit_on_fail(rc_barrier);  // here all processes have the same lines vector
 
   // Now recvbuf is ready to be used and contains the lines to be processed
   std::unordered_set<char> alphabet_builder;
@@ -187,7 +181,6 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char *argv[]) {
   std::for_each(std::begin(alphabet_builder), std::end(alphabet_builder),
                 [&alphabet](const auto character) { alphabet.push_back(character); });
 
-
   rc_barrier = MPI_Barrier(mpi_context.comm);
   exit_on_fail(rc_barrier);
 
@@ -200,18 +193,17 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char *argv[]) {
 
   std::size_t start_index[max_pattern_len];
   std::size_t end_index[max_pattern_len];
-  if(mpi_context.rank == 0) {
+  if (mpi_context.rank == 0) {
     // precompute the number of permutations according to the number of characters
     auto permutations = std::vector(max_pattern_len, alphabet.size());
     for (std::size_t i{1}; i < permutations.size(); ++i) {
       permutations[i] = alphabet.size() * permutations[i - std::size_t{1}];
     }
 
-
     // For each ngram size compute start and end index of the words to be processed
     std::size_t start;
     std::size_t end;
-    for(std::size_t ngram_size{1}; ngram_size <= max_pattern_len; ++ngram_size) {
+    for (std::size_t ngram_size{1}; ngram_size <= max_pattern_len; ++ngram_size) {
       int offset = 0;
       int total_words = permutations[ngram_size - std::size_t{1}];
 
@@ -219,15 +211,15 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char *argv[]) {
       start_index[ngram_size - 1] = offset;
       end_index[ngram_size - 1] = offset + total_words / mpi_context.size;
       offset = end_index[ngram_size - 1];
-      if(0 < total_words % mpi_context.size) {
+      if (0 < total_words % mpi_context.size) {
         ++end_index[ngram_size - 1];
         ++offset;
       }
 
-      for(int i = 1; i < mpi_context.size; ++i) {
+      for (int i = 1; i < mpi_context.size; ++i) {
         start = offset;
         end = offset + total_words / mpi_context.size;
-        if(i < total_words % mpi_context.size) {
+        if (i < total_words % mpi_context.size) {
           ++end;
         }
         offset = end;
@@ -237,28 +229,33 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char *argv[]) {
         exit_on_fail(rc_send);
       }
     }
-  }
-  else {
-    for(std::size_t ngram_size{1}; ngram_size <= max_pattern_len; ++ngram_size) {
-      int rc_recv = MPI_Recv(&start_index[ngram_size - 1], 1, MPI_INT, 0, tag_size, mpi_context.comm, MPI_STATUS_IGNORE);
+  } else {
+    for (std::size_t ngram_size{1}; ngram_size <= max_pattern_len; ++ngram_size) {
+      int rc_recv = MPI_Recv(&start_index[ngram_size - 1], 1, MPI_INT, 0, tag_size, mpi_context.comm,
+                             MPI_STATUS_IGNORE);
       exit_on_fail(rc_recv);
-      rc_recv = MPI_Recv(&end_index[ngram_size - 1], 1, MPI_INT, 0, tag_size, mpi_context.comm, MPI_STATUS_IGNORE);
+      rc_recv =
+          MPI_Recv(&end_index[ngram_size - 1], 1, MPI_INT, 0, tag_size, mpi_context.comm, MPI_STATUS_IGNORE);
       exit_on_fail(rc_recv);
     }
   }
 
-  fprintf(stderr, "Process %d computing from %zu to %zu words of ngram_size 1\n", mpi_context.rank, start_index[0], end_index[0]);
-  fprintf(stderr, "Process %d computing from %zu to %zu words of ngram_size 2\n", mpi_context.rank, start_index[1], end_index[1]);
-  fprintf(stderr, "Process %d computing from %zu to %zu words of ngram_size 3\n", mpi_context.rank, start_index[2], end_index[2]);
+  fprintf(stderr, "Process %d computing from %zu to %zu words of ngram_size 1\n", mpi_context.rank,
+          start_index[0], end_index[0]);
+  fprintf(stderr, "Process %d computing from %zu to %zu words of ngram_size 2\n", mpi_context.rank,
+          start_index[1], end_index[1]);
+  fprintf(stderr, "Process %d computing from %zu to %zu words of ngram_size 3\n", mpi_context.rank,
+          start_index[2], end_index[2]);
 
   // Now each process has the number of words to be processed, we can split the work
-  for(std::size_t ngram_size{1}; ngram_size <= max_pattern_len; ++ngram_size) {
-    for(std::size_t word_index = start_index[ngram_size - 1]; word_index < end_index[ngram_size - 1]; ++word_index) {
+  for (std::size_t ngram_size{1}; ngram_size <= max_pattern_len; ++ngram_size) {
+    for (std::size_t word_index = start_index[ngram_size - 1]; word_index < end_index[ngram_size - 1];
+         ++word_index) {
       // compose the ngram
       word current_word;
       memset(current_word.ngram, '\0', max_pattern_len + 1);
       for (std::size_t character_index{0}, remaining_size = word_index; character_index < ngram_size;
-          ++character_index, remaining_size /= alphabet.size()) {
+           ++character_index, remaining_size /= alphabet.size()) {
         current_word.ngram[character_index] = alphabet[remaining_size % alphabet.size()];
       }
       current_word.size = ngram_size;
@@ -266,8 +263,6 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char *argv[]) {
       // evaluate the coverage and add the word to the dictionary
       current_word.coverage = count_coverage(database.c_str(), current_word.ngram);
       result.add_word(current_word);
-      if(strcmp(current_word.ngram, "O") == 0)
-        fprintf(stderr, "Process %d computed coverage of %s: %zu\n", mpi_context.rank, current_word.ngram, current_word.coverage);
     }
   }
 
@@ -275,8 +270,9 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char *argv[]) {
   exit_on_fail(rc_reduce_barrier);
 
   fprintf(stderr, "Process %d finished computing, dict size: %zu\n", mpi_context.rank, result.data.size());
-  // Now each process has a dictionary with the ngrams with the greatest coverage, we need to reduce them to the master process
-  // summing the coverage of the same ngrams and then the master process will compute the final dictionary
+  // Now each process has a dictionary with the ngrams with the greatest coverage, we need to reduce them to
+  // the master process summing the coverage of the same ngrams and then the master process will compute the
+  // final dictionary
 
   // Gather the vector of words of each process dictionary into a vector of dictionaries on the master process
   // Padding the vector of words with empty words.
@@ -300,19 +296,19 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char *argv[]) {
   std::size_t partial_coverages[size_max];
 
   int i;
-  for(i = 0; i < result.data.size(); ++i) {
+  for (i = 0; i < result.data.size(); ++i) {
     partial_coverages[i] = result.data[i].coverage;
   }
-  for(; i < size_max; ++i) { // padding
+  for (; i < size_max; ++i) {  // padding
     partial_coverages[i] = 0;
   }
 
   char partial_ngrams[size_max][max_pattern_len + 1];
 
-  for(i = 0; i < result.data.size(); ++i) {
+  for (i = 0; i < result.data.size(); ++i) {
     strcpy(partial_ngrams[i], result.data[i].ngram);
   }
-  for(; i < size_max; ++i) { // padding
+  for (; i < size_max; ++i) {  // padding
     memset(partial_ngrams[i], '\0', max_pattern_len + 1);
   }
 
@@ -324,21 +320,23 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char *argv[]) {
   exit_on_fail(rc_barrier);
 
   // gather the coverages and ngrams into the recvbuf
-  int rc_gather = MPI_Gather(partial_coverages, size_max, MPI_UNSIGNED_LONG, coverages, size_max, MPI_UNSIGNED_LONG, 0, mpi_context.comm);
+  int rc_gather = MPI_Gather(partial_coverages, size_max, MPI_UNSIGNED_LONG, coverages, size_max,
+                             MPI_UNSIGNED_LONG, 0, mpi_context.comm);
   exit_on_fail(rc_gather);
-  rc_gather = MPI_Gather(partial_ngrams, size_max, mpi_string_type, ngrams, size_max, mpi_string_type, 0, mpi_context.comm);
+  rc_gather = MPI_Gather(partial_ngrams, size_max, mpi_string_type, ngrams, size_max, mpi_string_type, 0,
+                         mpi_context.comm);
   exit_on_fail(rc_gather);
 
   rc_barrier = MPI_Barrier(mpi_context.comm);
   exit_on_fail(rc_barrier);
 
-  if(mpi_context.rank == 0) {
+  if (mpi_context.rank == 0) {
     fprintf(stderr, "Process %d writing final dictionary\n", mpi_context.rank);
 
     // declare the final dictionary that will be used to store the reduced dictionaries
     dictionary final_dict;
 
-    for(int i = 0; i < size_sum; ++i) {
+    for (int i = 0; i < size_sum; ++i) {
       word current_word;
       memset(current_word.ngram, '\0', max_pattern_len + 1);
       strcpy(current_word.ngram, ngrams[i]);
