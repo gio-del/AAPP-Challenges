@@ -109,6 +109,8 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char *argv[]) {
     return EXIT_FAILURE;
   }
 
+  double start_time, end_time;
+
   // get the MPI context
   mpi_context_type mpi_context = mpi_context_type();
 
@@ -130,6 +132,8 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char *argv[]) {
   database.reserve(209715200);
 
   if (mpi_context.rank == 0) {
+    start_time = MPI_Wtime();
+
     // Read The input from the standard input
     std::cerr << "Reading the molecules from the standard input ..." << std::endl;
 
@@ -350,6 +354,10 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char *argv[]) {
     std::cout << "NGRAM COVERAGE" << std::endl;
     std::sort(std::begin(final_dict.data), std::end(final_dict.data), word_coverage_gt_comparator{});
     final_dict.write(std::cout);
+
+    end_time = MPI_Wtime();
+    std::cerr << "Time of execution with " << mpi_context.size << " processes: " << end_time - start_time
+              << std::endl;
   }
 
   // Put a barrier to make sure that all processes have finished
