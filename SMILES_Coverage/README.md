@@ -33,7 +33,7 @@ However, we will use the launcher script `./scripts/launch.sh` to run it. Make s
 For example, assuming that the working directory is in the repository root, and the building directory is `./build`, then, you can execute the application with the script:
 
 ```bash
-$ ./scripts/launch.sh ./build/main ./data/molecules.smi output.csv 1
+./scripts/launch.sh ./build/main ./data/molecules.smi output.csv 1
 ```
 
 You will see the intermediate results on the terminal, while the final output is stored in the output.csv file.
