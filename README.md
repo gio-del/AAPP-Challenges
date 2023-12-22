@@ -10,7 +10,7 @@ Also, a constrained version of the algorithm is implemented, where the maximum n
 
 Finally, there is a function to generate sequences of maximum distance given their length.
 
-[More details](sequence_alignment/README.md)
+[More details](Sequence_Alignment/README.md)
 
 ## SMILES Coverage (Parallel Programming)
 
@@ -18,4 +18,4 @@ The `smiles_coverage` folder contains the code for the second challenge. The cod
 
 The parallelized version is accompanied by a sequential version, which is used to compare the results.
 
-[More details](smiles_coverage/README.md)
+[More details](SMILES_coverage/README.md)
