@@ -1,41 +1,24 @@
-# Advanced Algorithms and Parallel Programming
+# SMILES Coverage
 
-This repository contains the material required to solve the AAPP challenge.
-The following sections provide details about the repository structure, how to build the application, and how to execute it.
+This folder contains the code for the second challenge. The code is written in C++ and MPI is used to parallelize the computation.
 
 ## Repository structure
 
-We follow the streamlined approach for applications based on the CMake building system.
-At the root level, we have the main `CMakeLists.txt` file that drives the compilation phases.
-The actual source files are stored in the folder `src`.
-For convenience, we also include a sample file with a few molecules `data/molecules.smi`.
-To define a common way of executing the application, we provide a script in `scripts/launch.sh` that wraps the execution to set a fixed level of parallelism.
+Instructions for building and running the application are provided in this [README](parallel/README.md) file.
 
+## Challenge objectives
 
-## How to compile the application
+The goal of the program is:
+> Given a set of molecules in SMILES format, we want to compute the occurrences (coverage) of substrings in the molecules. The length of the substrings is from 1 to `max_length`, which is a parameter of the application.
 
-It follows the common CMake approach.
-Assuming that the working directory is the repository root, it is enough to issue the following commands:
+### How to compute the coverage
 
-```bash
-$ cmake -S . -B build
-$ cmake --build build
-```
+The serial program simply iterates over all the lengths from 1 to `max_length` and for each length, it computes the coverage of all the possible substrings of that length.
 
-## How to run the application
+### How to parallelize the computation
 
-You can find the executable in the building directory.
-For example, if the build directory is `build`, the executable will be `./build/main`.
-The executable reads the input molecules from the standard input, writes intermediate results on the standard error, and prints the final table on the standard output.
-For developing purposes, you can execute the application directly.
-However, we will use the launcher script `./scripts/launch.sh` to run it. Make sure that it works properly.
+The main idea is that there is a master process that reads the input file and sends the molecules to the other processes. Then, the master process sends to the other processes the starting and ending index of the molecules that they have to process, splitting the work as evenly as possible. Note that this part is polynomial in the number of processes as the master do not need to actually iterate over the molecules.
 
-For example, assuming that the working directory is in the repository root, and the building directory is `./build`, then, you can execute the application with the script:
+Then, each process computes the coverage of the molecules in the range that it has been assigned. This is the expensive part of the computation, but since all the processors are working on different molecules, there is no need for synchronization and the program scales almost linearly.
 
-```bash
-./scripts/launch.sh ./build/main ./data/molecules.smi output.csv 1
-```
-
-You will see the intermediate results on the terminal, while the final output is stored in the output.csv file.
-
-> **NOTE**: the input file is very small and for developing purposes. You can find more datasets with a larger number of molecules here: [https://github.com/GLambard/Molecules_Dataset_Collection/tree/master](https://github.com/GLambard/Molecules_Dataset_Collection/tree/master)
+Finally, the results are gathered by the master process and printed to the output file.
